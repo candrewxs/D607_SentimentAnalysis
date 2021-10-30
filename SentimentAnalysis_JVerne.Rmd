@@ -1,0 +1,292 @@
+---
+title: "Sentiment Analysis - Jules Verne Novels"
+author: "Coffy Andrews-Guo"
+date: "10/29/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## The `sentiments` datasets
+
+The function `get_sentiments() allows us to get specific sentiment lexicons with the appropriate measures for each one.
+```{r eval=FALSE}
+library(tidytext)
+
+get_sentiments("afinn")
+```
+
+```{r}
+library(tidytext)
+get_sentiments("bing")
+```
+
+
+```{r eval=FALSE}
+get_sentiments("nrc")
+```
+
+
+## Additional sentiment lexicon `syuzhet`. 
+
+The Syuzhet lexicon is part of the Syuzhet package developed by Matthew Jockers. The lexicon was developed in the Nebraska Literary Lab and contains 10,748 words which are assigned a score of -1 to 1 with 16 gradients (Jockers and Thalken 2020). As seen in the descriptive statistics below, the mean is -0.213. Referenced from [BookDown.org](https://www.bookdown.org/psonkin18/berkshire/sentiment.html#limitations-with-bag-of-words-approach)
+
+```{r}
+library(syuzhet)
+```
+
+```{r}
+syuzhet <- get_sentiment_dictionary("syuzhet") #get lexicon and create dataframe
+#descriptive statistics
+summary(syuzhet)
+```
+
+
+## Load required libraries
+```{r}
+library(gutenbergr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(wordcloud)
+library(reshape2)
+library(stringr)
+```
+
+
+## Extract from Gutemburg Project: Jules Verne Collection 
+
+Jules Vernes six novels: Around the World in Eighty Days, A Journey to the Center of the Earth, Five Weeks in a Balloon, Abandoned, The Mysterious Island, The Mysterious Island, and The Master of the World.
+```{r}
+world <- gutenberg_download(103)    # Adventure stories/Fiction/Jan 1, 1994
+names(world) <- c("book", "text")
+world$book <- "Around the World in Eighty Days"
+
+journey <- gutenberg_download(18857)  # Adventure stories/Fiction/Jul 18, 2006
+names(journey) <- c("book", "text")
+journey$book <- "A Journey to the Center of the Earth"
+
+balloon <- gutenberg_download(3526)  # Adventure/Fiction/Nov 1, 2002
+names(balloon) <- c("book", "text")
+balloon$book <- "Five Weeks in a Balloon"
+
+aband <- gutenberg_download(33516)  # Castaways/Fiction/Aug 23, 2010
+names(aband) <- c("book", "text")
+aband$book <- "Abandoned"
+
+island <- gutenberg_download(1268)  # Castaways/Fiction/Apr 1, 1998
+names(island) <- c("book", "text")
+island$book <- "The Mysterious Island"
+
+master <- gutenberg_download(3809)  #Adventure/Fiction/Mar 1, 2003
+names(master) <- c("book", "text")
+master$book <- "The Master of the World"
+```
+
+Create a single data Set and save into RData File
+```{r}
+alljvernebooks <- rbind(world, journey, balloon, aband, island, master)
+alljvernebooks <- alljvernebooks[alljvernebooks$text!="",]
+alljvernebooks$text <- gsub( '[[:punct:]] | [[:digit:]]', '', alljvernebooks$text)
+
+rm(world, journey, balloon, aband, island, master)
+
+# establishing a Rdata file due to difficulty creating a corpus package with corpus functions
+save(list = ls(), file = "alljvernebooks.Rdata") 
+```
+
+
+## Sentiment analysis with inner join
+
+Load the New Data Set, Clean and Separate Words 
+```{r}
+load("alljvernebooks.Rdata")
+cleanjvernebks <- alljvernebooks %>%
+  group_by(book) %>%
+  mutate(linenumber = row_number(),
+         chapter = cumsum(str_detect(text, 
+                                     regex("^chapter [\\divxlc]", 
+                                           ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+```
+
+Remove stop words that are not useful for an analysis, typically extremely common words such as “the”, “of”, “to”, and so forth in English.
+```{r}
+data("stop_words")
+cleanjverne <- cleanjvernebks %>%
+  anti_join(stop_words)
+```
+
+First, let’s use the NRC lexicon and filter() for the joy words.
+```{r nrcjoy, echo=FALSE, dependson="cleanjverne"}
+# mostly positive, happy words about hope, friendship, and love here
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+
+cleanjverne %>%
+  filter(book == "Around the World in Eighty Days") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+To get a good estimate of sentiment we'll use 80 lines from each book to wash out narrative structure.
+```{r}
+# Next, we count up how many positive and negative words there are in defined sections of each book.
+fiction_sentiment <- cleanjverne %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+Plot the sentiments scores
+```{r sentimentplot, fig.width=7, fig.height=7, fig.cap="Sentiment through the narratives of Jules Verne' novels"}
+# Now we can plot these sentiment scores across the plot trajectory of each novel.
+
+library(ggplot2)
+
+ggplot(fiction_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+The plot of each novel changes toward more negative or positive sentiment over the trajectory of the story.
+
+
+# Comparing the three sentiment dictionaries
+
+```{r}
+jour_center <- cleanjverne %>% 
+  filter(book == "A Journey to the Center of the Earth")
+
+jour_center
+```
+
+Using the inner_join() to calculate the sentiment in different ways.
+```{r comparesentiment,echo=FALSE, dependson="A Journey to the Center of the Earth"}
+afinn <- jour_center %>%  # A Journey to the Center of the Earth
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  jour_center %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  jour_center %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+An estimate of the net sentiment (positive - negative) in each chunk of the novel text for each sentiment lexicon. 
+```{r compareplot, dependson="comparesentiment", fig.cap="(ref:comparecap)"}
+# Let’s bind them together and visualize them
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+## Additonal Sentiment Lexicon: Syuzhet
+
+Combing Syuzhet lexicon with Julves Vernes Corpus
+```{r}
+syuz_jvernes <- cleanjverne %>%      #creates new dataframe "syuz_jvernes"
+  inner_join(syuzhet, by = "word") #just joins words in syuzhet
+syuz_jvernes
+```
+
+Calculate syuzhet sentiment by book. Syuzhet assigns each word a sentiment score from -1 to +1
+```{r}
+#sentiment by year
+syuz_jvernes_book <- syuz_jvernes %>%
+  group_by(book) %>%
+  summarise(syuzhet = sum(value)) %>%
+  ungroup()
+syuz_jvernes_book
+```
+The following chart shows Syuzhet sentiment score for each of the 6 books. The sentiment is mostly negative for the collection where the only `Abandoned` has the highest sentiment score (188.45) and `The Master of the World` has the highest negative sentiment score (-197.80).
+
+```{r}
+g_syuzhet <- ggplot(syuz_jvernes_book, aes(book, syuzhet)) + 
+  geom_col(show.legend = FALSE, fill = "lightsteelblue3") +
+  labs(x= NULL,y="Sentiment Score",
+       title="Syuzhet Sentiment Scores for Julves Vernes Letters")+
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
+g_syuzhet +
+  coord_flip()
+```
+
+
+## Most common positive and negative words.
+```{r}
+bing_word_counts <- cleanjverne %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+```
+Visualization with ggplot2
+```{r}
+# This can be shown visually, and we can pipe straight into ggplot2
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+
+## Wordclouds
+
+Wordcloud package, which uses base R graphics,it looks at the most common words in Julves Vernes’s works as a whole again, but this time as a wordcloud
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.cap="The most common words in Julves Vernes's novels"}
+cleanjverne %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+
+## Using comparison.cloud() 
+
+Turn the data frame into a matrix with reshape2’s acast(). Perform the sentiment analysis to tag positive and negative words using an inner join, then find the most common positive and negative words. 
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+cleanjverne %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100)
+```
+
+
+
+# References:
+
+Robinson, J. S. and D. (n.d.). Welcome to Text Mining with R | Text Mining with R. In www.tidytextmining.com. https://www.tidytextmining.com/index.html
+
+Project Gutenberg. (n.d.). Project Gutenberg. https://www.gutenberg.org/ebooks/
+
+Jockers, M. (2017, December 13). Introduction to the Syuzhet Package. R-Project.org. https://cran.r-project.org/web/packages/syuzhet/vignettes/syuzhet-vignette.html
+
+
+
+
