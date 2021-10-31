@@ -1,7 +1,7 @@
 ---
 title: "Sentiment Analysis - Jules Verne Novels"
-author: "Coffy Andrews-Guo"
-date: "10/29/2021"
+author: "Coffy Andrews-Guo, Krutika Patel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
@@ -60,7 +60,7 @@ library(stringr)
 
 ## Extract from Gutemburg Project: Jules Verne Collection 
 
-Jules Vernes six novels: Around the World in Eighty Days, A Journey to the Center of the Earth, Five Weeks in a Balloon, Abandoned, The Mysterious Island, The Mysterious Island, and The Master of the World.
+Jules Vernes six novels: Around the World in Eighty Days, A Journey to the Center of the Earth, Five Weeks in a Balloon, Abandoned, The Mysterious Island, The Mysterious Island, and The Master of the World. Vernes is a French author whose novels are considered a literary prize based on his imagination, and the innovations and inventions during the late 18th century. The novels were used in motion pictures, stage performances and television based on concepts of submarines, space travel and deep-sea exploration. 
 ```{r}
 world <- gutenberg_download(103)    # Adventure stories/Fiction/Jan 1, 1994
 names(world) <- c("book", "text")
@@ -87,7 +87,7 @@ names(master) <- c("book", "text")
 master$book <- "The Master of the World"
 ```
 
-Create a single data Set and save into RData File
+Create a single data set and save into RData File
 ```{r}
 alljvernebooks <- rbind(world, journey, balloon, aband, island, master)
 alljvernebooks <- alljvernebooks[alljvernebooks$text!="",]
@@ -133,6 +133,7 @@ cleanjverne %>%
   inner_join(nrc_joy) %>%
   count(word, sort = TRUE)
 ```
+
 To get a good estimate of sentiment we'll use 80 lines from each book to wash out narrative structure.
 ```{r}
 # Next, we count up how many positive and negative words there are in defined sections of each book.
@@ -156,7 +157,7 @@ ggplot(fiction_sentiment, aes(index, sentiment, fill = book)) +
 The plot of each novel changes toward more negative or positive sentiment over the trajectory of the story.
 
 
-# Comparing the three sentiment dictionaries
+## Comparing the three sentiment dictionaries
 
 ```{r}
 jour_center <- cleanjverne %>% 
@@ -189,6 +190,7 @@ bing_and_nrc <- bind_rows(
               values_fill = 0) %>% 
   mutate(sentiment = positive - negative)
 ```
+
 An estimate of the net sentiment (positive - negative) in each chunk of the novel text for each sentiment lexicon. 
 ```{r compareplot, dependson="comparesentiment", fig.cap="(ref:comparecap)"}
 # Let’s bind them together and visualize them
@@ -231,7 +233,7 @@ g_syuzhet +
 ```
 
 
-## Most common positive and negative words.
+## Most common positive and negative words 
 ```{r}
 bing_word_counts <- cleanjverne %>%
   inner_join(get_sentiments("bing")) %>%
@@ -240,6 +242,7 @@ bing_word_counts <- cleanjverne %>%
 
 bing_word_counts
 ```
+
 Visualization with ggplot2
 ```{r}
 # This can be shown visually, and we can pipe straight into ggplot2
@@ -258,7 +261,7 @@ bing_word_counts %>%
 
 ## Wordclouds
 
-Wordcloud package, which uses base R graphics,it looks at the most common words in Julves Vernes’s works as a whole again, but this time as a wordcloud
+Wordcloud package, which uses base R graphics,it looks at the most common words in Julves Vernes’s works as a whole again, but this time as a wordcloud.
 ```{r echo=FALSE, warning=FALSE, message=FALSE, fig.cap="The most common words in Julves Vernes's novels"}
 cleanjverne %>%
   count(word) %>%
@@ -273,13 +276,17 @@ cleanjverne %>%
   inner_join(get_sentiments("bing")) %>%
   count(word, sentiment, sort = TRUE) %>%
   acast(word ~ sentiment, value.var = "n", fill = 0) %>%
-  comparison.cloud(colors = c("gray20", "gray80"),
+  comparison.cloud(colors = c("gray20", "cornflowerblue"),
                    max.words = 100)
 ```
 
 
+## Conclusion
+Using the Syuzhet lexicon and the Jules Vernes books corpus we were able to analysis the overall sentiment of each of his six books. The books had a higher negative sentiment. With the Syuzhet lexicon, 4 out of the 6 books had a net negative sentiment score. Analysis with the AFFIN, Bing et. al, and NRC sentiment lexicon shows two of the three giving a net negative score. The books are meant to be adventurous and innovative. Thus, the word usage is not meant to be overly positive. The world cloud shows a picture of the top words in both the positive and negative direction. The negatively associated words seem to match the books theme. The net negative sentiment analysis leads us to believe that although Jules Vernes' books aren't overly positive, they do not fall on a largely negative scale either.
 
-# References:
+
+
+## References:
 
 Robinson, J. S. and D. (n.d.). Welcome to Text Mining with R | Text Mining with R. In www.tidytextmining.com. https://www.tidytextmining.com/index.html
 
